@@ -248,6 +248,25 @@
             margin-left: 4px;
         }
         
+        .index-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .index-price {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .index-change {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .index-change.up { color: #e74c3c; }
+        .index-change.down { color: #27ae60; }
+        .index-volume {
+            font-size: 14px;
+            color: #888;
+        }
         .quick-info {
             display: flex;
             justify-content: space-between;
@@ -276,7 +295,6 @@
             margin-bottom: 10px;
         }
         
-        /* 市場概況卡片 */
         .market-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -300,6 +318,20 @@
             font-size: 22px;
         }
         
+        .loading-shimmer {
+            display: inline-block;
+            width: 60px;
+            height: 14px;
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
         @media (max-width: 1024px) {
             .main-grid { grid-template-columns: 1fr; }
             .chart-row { grid-template-columns: 1fr; }
@@ -316,9 +348,8 @@
         <div class="header">
             <h1>📈 我的股票持倉</h1>
             <div class="header-actions">
-                <span class="total-profit-badge {{ 'positive' if total_profit > 0 else 'negative' if total_profit < 0 else '' }}">
-                    {{ '▲' if total_profit > 0 else '▼' if total_profit < 0 else '' }}
-                    總損益 ${{ "%.2f"|format(total_profit) }}
+                <span class="total-profit-badge" id="totalBadge">
+                    ⏳ 載入中...
                 </span>
                 <a href="/refresh" class="refresh-btn">🔄 更新</a>
             </div>
@@ -367,35 +398,17 @@
                                         <span class="avg-cost-hint">({{ stock.avg_cost_count }}筆)</span>
                                         {% endif %}
                                     </td>
-                                    <td>
-                                        {% if stock.error %}
-                                        <span style="color:#ccc;">--</span>
-                                        {% else %}
-                                        <span class="price-{{ 'up' if stock.change > 0 else 'down' if stock.change < 0 else 'flat' }}">
-                                            ${{ "%.2f"|format(stock.current_price) }}
-                                        </span>
-                                        {% endif %}
+                                    <td class="price-loading">
+                                        <span class="loading-shimmer"></span>
                                     </td>
-                                    <td class="price-{{ 'up' if stock.change > 0 else 'down' if stock.change < 0 else 'flat' }}">
-                                        {% if not stock.error %}
-                                        {{ "%.2f"|format(stock.change) }}%
-                                        {% else %}
-                                        --
-                                        {% endif %}
+                                    <td class="price-loading">
+                                        <span class="loading-shimmer"></span>
                                     </td>
-                                    <td class="price-{{ 'up' if stock.profit > 0 else 'down' if stock.profit < 0 else 'flat' }}">
-                                        {% if not stock.error %}
-                                        ${{ "%.2f"|format(stock.profit) }}
-                                        {% else %}
-                                        --
-                                        {% endif %}
+                                    <td class="price-loading">
+                                        <span class="loading-shimmer"></span>
                                     </td>
-                                    <td>
-                                        {% if not stock.error and stock.volume %}
-                                        {{ stock.volume }}
-                                        {% else %}
-                                        --
-                                        {% endif %}
+                                    <td class="price-loading">
+                                        <span class="loading-shimmer"></span>
                                     </td>
                                     <td>
                                         <form action="/delete/{{ stock.id }}" method="POST" style="display:inline;">
@@ -415,8 +428,8 @@
                     <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(145deg, #fafbfc, #f0f2f5);border-radius:12px;padding:12px 20px;margin-bottom:12px;">
                         <div>
                             <span style="font-size:13px;color:#888;">📊 總損益</span>
-                            <span style="font-size:24px;font-weight:700;color:{{ '#e74c3c' if total_profit > 0 else '#27ae60' if total_profit < 0 else '#999' }};margin-left:10px;">
-                                ${{ "%.2f"|format(total_profit) }}
+                            <span style="font-size:24px;font-weight:700;color:#999;margin-left:10px;" id="totalProfitDisplay">
+                                ⏳ 載入中...
                             </span>
                         </div>
                         <div>
@@ -454,54 +467,44 @@
                 <!-- 市場概況 -->
                 <div class="card" style="margin-bottom:16px;">
                     <div class="card-title">📊 市場概況</div>
-                    <div class="market-grid">
+                    <div class="market-grid" id="marketGrid">
                         <div class="market-item">
                             <div class="label">成交值</div>
-                            <div class="value large">${{ "%.0f"|format(market_data.total_value) }}</div>
+                            <div class="value large"><span class="loading-shimmer"></span></div>
                         </div>
                         <div class="market-item">
                             <div class="label">成交量</div>
-                            <div class="value">{{ market_data.total_volume }}</div>
+                            <div class="value"><span class="loading-shimmer"></span></div>
                         </div>
                         <div class="market-item">
                             <div class="label">漲 / 跌 / 平</div>
-                            <div class="value">
-                                <span style="color:#e74c3c;">▲{{ market_data.up_count }}</span>
-                                <span style="color:#27ae60;">▼{{ market_data.down_count }}</span>
-                                <span style="color:#999;">-{{ market_data.flat_count }}</span>
+                            <div class="value" id="upDownFlat">
+                                <span class="loading-shimmer"></span>
                             </div>
                         </div>
                         <div class="market-item">
                             <div class="label">市場溫度</div>
-                            <div class="value" style="color:{{ market_data.temp_color }};">
-                                {{ market_data.market_temp }}
+                            <div class="value" id="marketTemp" style="color:#999;">
+                                ⏳ 載入中...
                             </div>
                         </div>
                     </div>
                     <div style="margin-top:10px;font-size:12px;color:#aaa;text-align:center;">
-                        共 {{ market_data.stock_count }} 檔持股
+                        共 {{ stocks|length }} 檔持股
                     </div>
                 </div>
 
                 <!-- 最賺 / 最賠 -->
                 <div class="card" style="margin-bottom:16px;">
                     <div class="card-title">📈 持股快訊</div>
-                    <div class="quick-info">
+                    <div class="quick-info" id="quickInfo">
                         <div>
                             <span class="best">🚀 最賺</span>
-                            {% if best_stock %}
-                            <div><strong>{{ best_stock.company_name }}</strong> +${{ best_stock.profit }}</div>
-                            {% else %}
-                            <div style="color:#ccc;">無持股</div>
-                            {% endif %}
+                            <div style="color:#ccc;">載入中...</div>
                         </div>
                         <div style="text-align:right;">
                             <span class="worst">📉 最賠</span>
-                            {% if worst_stock %}
-                            <div><strong>{{ worst_stock.company_name }}</strong> -${{ worst_stock.profit|abs }}</div>
-                            {% else %}
-                            <div style="color:#ccc;">無持股</div>
-                            {% endif %}
+                            <div style="color:#ccc;">載入中...</div>
                         </div>
                     </div>
                 </div>
@@ -619,18 +622,282 @@
             window._pieChart = chart;
         }
 
+        // ============================================================
+        // 載入即時股價（非同步）
+        // ============================================================
+        async function loadStockPrices() {
+            try {
+                console.log("📡 載入股價資料...");
+                const response = await fetch('/api/stocks');
+                const data = await response.json();
+                
+                if (!data.stocks || data.stocks.length === 0) {
+                    console.log("⚠️ 無持股資料");
+                    return;
+                }
+                
+                console.log("✅ 收到股價資料:", data.stocks.length, "筆");
+                
+                // 更新表格
+                const rows = document.querySelectorAll('tbody tr');
+                rows.forEach((row, index) => {
+                    if (index >= data.stocks.length) return;
+                    const stock = data.stocks[index];
+                    
+                    // 更新公司名稱
+                    const nameCell = row.querySelector('td:first-child');
+                    if (nameCell && stock.company_name) {
+                        const symbol = stock.symbol || '';
+                        nameCell.innerHTML = `
+                            <span class="clickable-symbol" data-symbol="${symbol}">
+                                ${stock.company_name}
+                                <span class="symbol-code">${symbol}</span>
+                            </span>
+                        `;
+                        const clickable = nameCell.querySelector('.clickable-symbol');
+                        if (clickable) {
+                            clickable.addEventListener('click', function() {
+                                showKline(this.getAttribute('data-symbol'));
+                            });
+                        }
+                    }
+                    
+                    // 更新現價
+                    const priceCell = row.querySelectorAll('td')[3];
+                    if (priceCell && !stock.error) {
+                        const changeClass = stock.change > 0 ? 'price-up' : stock.change < 0 ? 'price-down' : 'price-flat';
+                        priceCell.innerHTML = `<span class="${changeClass}">$${stock.current_price.toFixed(2)}</span>`;
+                    } else if (priceCell && stock.error) {
+                        priceCell.innerHTML = '<span style="color:#ccc;">--</span>';
+                    }
+                    
+                    // 更新漲跌幅
+                    const changeCell = row.querySelectorAll('td')[4];
+                    if (changeCell && !stock.error) {
+                        const changeClass = stock.change > 0 ? 'price-up' : stock.change < 0 ? 'price-down' : 'price-flat';
+                        changeCell.innerHTML = `<span class="${changeClass}">${stock.change.toFixed(2)}%</span>`;
+                    } else if (changeCell && stock.error) {
+                        changeCell.innerHTML = '<span style="color:#ccc;">--</span>';
+                    }
+                    
+                    // 更新損益
+                    const profitCell = row.querySelectorAll('td')[5];
+                    if (profitCell && !stock.error) {
+                        const profitClass = stock.profit > 0 ? 'price-up' : stock.profit < 0 ? 'price-down' : 'price-flat';
+                        profitCell.innerHTML = `<span class="${profitClass}">$${stock.profit.toFixed(2)}</span>`;
+                    } else if (profitCell && stock.error) {
+                        profitCell.innerHTML = '<span style="color:#ccc;">--</span>';
+                    }
+                    
+                    // 更新成交量
+                    const volumeCell = row.querySelectorAll('td')[6];
+                    if (volumeCell && !stock.error && stock.volume) {
+                        volumeCell.textContent = stock.volume;
+                    } else if (volumeCell) {
+                        volumeCell.textContent = '--';
+                    }
+                });
+                
+                // 更新總損益
+                const totalBadge = document.getElementById('totalBadge');
+                if (totalBadge && data.total_profit !== undefined) {
+                    const sign = data.total_profit > 0 ? '▲' : data.total_profit < 0 ? '▼' : '';
+                    totalBadge.textContent = `${sign} 總損益 $${data.total_profit.toFixed(2)}`;
+                    totalBadge.className = `total-profit-badge ${data.total_profit > 0 ? 'positive' : data.total_profit < 0 ? 'negative' : ''}`;
+                }
+                
+                // 更新總損益顯示
+                const totalDisplay = document.getElementById('totalProfitDisplay');
+                if (totalDisplay && data.total_profit !== undefined) {
+                    const color = data.total_profit > 0 ? '#e74c3c' : data.total_profit < 0 ? '#27ae60' : '#999';
+                    totalDisplay.textContent = `$${data.total_profit.toFixed(2)}`;
+                    totalDisplay.style.color = color;
+                }
+                
+                // 更新最賺最賠
+                const quickInfo = document.getElementById('quickInfo');
+                if (quickInfo) {
+                    const bestHtml = data.best_stock ? 
+                        `<div><strong>${data.best_stock.company_name}</strong> +$${data.best_stock.profit}</div>` : 
+                        '<div style="color:#ccc;">無持股</div>';
+                    const worstHtml = data.worst_stock ? 
+                        `<div><strong>${data.worst_stock.company_name}</strong> -$${Math.abs(data.worst_stock.profit)}</div>` : 
+                        '<div style="color:#ccc;">無持股</div>';
+                    
+                    quickInfo.innerHTML = `
+                        <div>
+                            <span class="best">🚀 最賺</span>
+                            ${bestHtml}
+                        </div>
+                        <div style="text-align:right;">
+                            <span class="worst">📉 最賠</span>
+                            ${worstHtml}
+                        </div>
+                    `;
+                }
+                
+                // 更新市場概況
+                updateMarketData(data.stocks);
+                
+                // 更新圓餅圖
+                updatePieChart(data.stocks);
+                
+                console.log("✅ 股價更新完成");
+            } catch (error) {
+                console.error('載入股價失敗:', error);
+                // 顯示錯誤訊息
+                const totalBadge = document.getElementById('totalBadge');
+                if (totalBadge) {
+                    totalBadge.textContent = '⚠️ 載入失敗';
+                    totalBadge.className = 'total-profit-badge';
+                }
+            }
+        }
+        
+        function updateMarketData(stocks) {
+            if (!stocks || stocks.length === 0) return;
+            
+            const valid = stocks.filter(s => !s.error);
+            const totalValue = valid.reduce((sum, s) => sum + (s.current_price || 0) * (s.shares || 0), 0);
+            const totalVolume = valid.reduce((sum, s) => sum + (s.volume || 0), 0);
+            const upCount = valid.filter(s => s.change > 0).length;
+            const downCount = valid.filter(s => s.change < 0).length;
+            const flatCount = valid.filter(s => s.change === 0).length;
+            
+            // 更新市場概況
+            const marketItems = document.querySelectorAll('.market-item .value');
+            if (marketItems.length >= 4) {
+                marketItems[0].textContent = `$${totalValue.toFixed(0)}`;
+                marketItems[1].textContent = totalVolume;
+            }
+            
+            const upDownFlat = document.getElementById('upDownFlat');
+            if (upDownFlat) {
+                upDownFlat.innerHTML = `
+                    <span style="color:#e74c3c;">▲${upCount}</span>
+                    <span style="color:#27ae60;">▼${downCount}</span>
+                    <span style="color:#999;">-${flatCount}</span>
+                `;
+            }
+            
+            // 市場溫度
+            const avgChange = valid.reduce((sum, s) => sum + s.change, 0) / (valid.length || 1);
+            const tempEl = document.getElementById('marketTemp');
+            if (tempEl) {
+                let temp, color;
+                if (avgChange > 1) { temp = '🔥 過熱'; color = '#e74c3c'; }
+                else if (avgChange > 0) { temp = '🌤️ 偏多'; color = '#f39c12'; }
+                else if (avgChange > -1) { temp = '🌥️ 偏空'; color = '#3498db'; }
+                else { temp = '❄️ 低迷'; color = '#27ae60'; }
+                tempEl.textContent = temp;
+                tempEl.style.color = color;
+            }
+        }
+        
+        function updatePieChart(stocks) {
+            const dom = document.getElementById('pieChart');
+            if (!dom) return;
+            
+            // 如果已有圖表實例，先銷毀
+            if (window._pieChart) {
+                window._pieChart.dispose();
+            }
+            
+            const chart = echarts.init(dom);
+            const valid = stocks.filter(s => !s.error && s.profit !== undefined && Math.abs(s.profit) > 0.01);
+            
+            if (valid.length === 0) {
+                chart.setOption({
+                    title: { text: '尚無持股', left: 'center', top: 'center', textStyle: { fontSize: 14, color: '#ccc' } }
+                });
+                window._pieChart = chart;
+                return;
+            }
+            
+            const pieData = valid.map((s, index) => ({
+                name: s.company_name || s.symbol,
+                value: s.shares * s.current_price,
+                profit: s.profit,
+                itemStyle: {
+                    color: COLORS[index % COLORS.length]
+                }
+            }));
+            
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(params) {
+                        const p = params.data;
+                        const sign = p.profit >= 0 ? '+' : '';
+                        return `<strong>${p.name}</strong><br/>
+                                市值: $${p.value.toFixed(0)}<br/>
+                                損益: ${sign}$${p.profit.toFixed(2)}<br/>
+                                佔比: ${params.percent}%`;
+                    }
+                },
+                legend: {
+                    orient: 'vertical',
+                    right: 5,
+                    top: 'center',
+                    textStyle: { fontSize: 11 },
+                    formatter: function(name) {
+                        const item = valid.find(s => (s.company_name || s.symbol) === name);
+                        if (item) {
+                            const sign = item.profit >= 0 ? '+' : '';
+                            return `${name}  ${sign}$${item.profit.toFixed(0)}`;
+                        }
+                        return name;
+                    }
+                },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    avoidLabelOverlap: true,
+                    padAngle: 2,
+                    itemStyle: {
+                        borderRadius: 6,
+                        borderColor: '#fff',
+                        borderWidth: 2
+                    },
+                    label: {
+                        show: true,
+                        position: 'inside',
+                        formatter: function(params) {
+                            return params.name + '\n$' + params.value.toFixed(0);
+                        },
+                        fontSize: 10,
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        textShadowColor: 'rgba(0,0,0,0.3)',
+                        textShadowBlur: 4
+                    },
+                    emphasis: {
+                        label: { show: true, fontSize: 13, fontWeight: 'bold' }
+                    },
+                    data: pieData
+                }]
+            };
+            
+            chart.setOption(option);
+            window._pieChart = chart;
+        }
+
         let klineChartInstance = null;
         let currentSymbol = null;
 
         document.addEventListener('DOMContentLoaded', function() {
             initPieChart();
 
+            // 綁定點擊事件
             document.querySelectorAll('.clickable-symbol').forEach(el => {
                 el.addEventListener('click', function() {
                     const symbol = this.getAttribute('data-symbol');
                     showKline(symbol);
                 });
             });
+            
+            // 🔥 延遲載入股價（讓頁面先渲染）
+            setTimeout(loadStockPrices, 800);
         });
 
         function closeKline() {
@@ -651,6 +918,8 @@
             try {
                 const section = document.getElementById('klineSection');
                 section.classList.add('active');
+                
+                // 從 stocks 中找公司名稱
                 const stock = stocks.find(s => s.symbol === symbol);
                 const displayName = stock ? (stock.company_name || symbol) : symbol;
                 document.getElementById('klineTitle').textContent = `📊 ${displayName} (${symbol}) 價格走勢`;
