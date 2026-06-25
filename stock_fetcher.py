@@ -1,94 +1,125 @@
-import twstock
 import yfinance as yf
-from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
 def get_stock_data(symbol):
-    """使用 twstock 抓取台股最新收盤價及成交量"""
+    """使用 yfinance 抓取台股最新收盤價及成交量"""
     try:
+        # 如果是台股（純數字），加上 .TW
         if symbol.isdigit():
-            print(f"🔍 從 twstock 抓取: {symbol}")
-            stock = twstock.Stock(symbol)
+            symbol_tw = symbol + '.TW'
+            print(f"🔍 從 Yahoo Finance 抓取: {symbol_tw}")
             
-            if len(stock.price) == 0:
-                print(f"⚠️ 沒有 {symbol} 的資料")
+            data = yf.download(symbol_tw, period='1d', progress=False)
+            
+            if data.empty:
+                print(f"⚠️ 找不到 {symbol} 的資料")
                 return None
             
-            latest_price = stock.price[-1]
+            latest_price = data['Close'].iloc[-1]
             
-            # 抓取成交量
-            volume = 0
-            if hasattr(stock, 'volume') and len(stock.volume) > 0:
-                volume = stock.volume[-1]
-            elif hasattr(stock, 'capacity') and len(stock.capacity) > 0:
-                volume = stock.capacity[-1]
-            
-            if len(stock.price) > 1:
-                prev_price = stock.price[-2]
+            # 計算漲跌幅（與昨日比）
+            if len(data) > 1:
+                prev_price = data['Close'].iloc[-2]
                 change = ((latest_price - prev_price) / prev_price) * 100
             else:
                 change = 0.0
             
-            company_name = symbol
+            # 抓取成交量
+            volume = 0
+            if 'Volume' in data.columns and not data['Volume'].empty:
+                volume = int(data['Volume'].iloc[-1])
             
-            print(f"✅ {company_name} ({symbol}) 收盤價: {latest_price}, 成交量: {volume}")
+            # 抓取公司名稱
+            company_name = symbol
+            try:
+                ticker = yf.Ticker(symbol_tw)
+                info = ticker.info
+                name = info.get('longName', info.get('shortName', symbol))
+                if name:
+                    company_name = name
+            except:
+                pass
+            
+            print(f"✅ {company_name} ({symbol}) 收盤價: {latest_price:.2f}, 成交量: {volume}")
             return {
                 'price': round(latest_price, 2),
                 'change': round(change, 2),
                 'volume': volume,
                 'company_name': company_name
             }
-        return None
+        else:
+            # 美股直接用原代號
+            print(f"🔍 從 Yahoo Finance 抓取: {symbol}")
+            data = yf.download(symbol, period='1d', progress=False)
+            
+            if data.empty:
+                return None
+            
+            latest_price = data['Close'].iloc[-1]
+            
+            if len(data) > 1:
+                prev_price = data['Close'].iloc[-2]
+                change = ((latest_price - prev_price) / prev_price) * 100
+            else:
+                change = 0.0
+            
+            volume = 0
+            if 'Volume' in data.columns and not data['Volume'].empty:
+                volume = int(data['Volume'].iloc[-1])
+            
+            company_name = symbol
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                name = info.get('longName', info.get('shortName', symbol))
+                if name:
+                    company_name = name
+            except:
+                pass
+            
+            return {
+                'price': round(latest_price, 2),
+                'change': round(change, 2),
+                'volume': volume,
+                'company_name': company_name
+            }
     except Exception as e:
-        print(f"❌ twstock 抓取失敗 ({symbol}): {e}")
+        print(f"❌ yfinance 抓取失敗 ({symbol}): {e}")
         return None
 
 def get_stock_history(symbol, period='5d'):
-    """使用 twstock 抓取歷史 K 線數據"""
+    """使用 yfinance 抓取歷史 K 線數據"""
     try:
         if symbol.isdigit():
-            print(f"🔍 從 twstock 抓取歷史資料: {symbol}")
-            stock = twstock.Stock(symbol)
-            
-            days = 5
-            if len(stock.price) < days:
-                days = len(stock.price)
-            
-            if days == 0:
-                print(f"⚠️ 沒有 {symbol} 的歷史資料")
-                return None
-            
-            closes = stock.price[-days:]
-            dates = stock.date[-days:]
-            
-            opens = stock.open[-days:] if hasattr(stock, 'open') and len(stock.open) >= days else closes
-            highs = stock.high[-days:] if hasattr(stock, 'high') and len(stock.high) >= days else closes
-            lows = stock.low[-days:] if hasattr(stock, 'low') and len(stock.low) >= days else closes
-            
-            date_strs = [d.strftime('%Y-%m-%d') for d in dates]
-            
-            print(f"✅ 取得 {days} 筆歷史資料")
-            return {
-                'dates': date_strs,
-                'opens': [round(o, 2) for o in opens],
-                'highs': [round(h, 2) for h in highs],
-                'lows': [round(l, 2) for l in lows],
-                'closes': [round(c, 2) for c in closes]
-            }
-        return None
+            symbol = symbol + '.TW'
+        
+        print(f"🔍 從 Yahoo Finance 抓取歷史資料: {symbol}")
+        data = yf.download(symbol, period=period, progress=False)
+        
+        if data.empty:
+            print(f"⚠️ 找不到 {symbol} 的歷史資料")
+            return None
+        
+        # 回傳 OHLC 數據
+        return {
+            'dates': data.index.strftime('%Y-%m-%d').tolist(),
+            'opens': data['Open'].round(2).tolist(),
+            'highs': data['High'].round(2).tolist(),
+            'lows': data['Low'].round(2).tolist(),
+            'closes': data['Close'].round(2).tolist()
+        }
     except Exception as e:
-        print(f"❌ twstock 歷史資料抓取失敗 ({symbol}): {e}")
+        print(f"❌ yfinance 歷史資料抓取失敗 ({symbol}): {e}")
         return None
 
 def get_twse_index():
     """抓取台股加權指數（大盤）- 使用 Yahoo Finance"""
     try:
-        import yfinance as yf
-        print("🔍 從 Yahoo Finance 抓取大盤指數: ^TWSE")
+        print("🔍 從 Yahoo Finance 抓取大盤指數: ^TWII")
         
-        # 下載大盤指數資料
-        data = yf.download('^TWSE', period='1d', progress=False)
+        data = yf.download('^TWII', period='1d', progress=False)
         
         if data.empty:
             print("⚠️ 無法取得大盤指數")
@@ -100,26 +131,22 @@ def get_twse_index():
                 'turnover': 0
             }
         
-        # 最新收盤價
         price = data['Close'].iloc[-1]
         
-        # 計算漲跌
         change = 0
         if len(data) > 1:
             prev_close = data['Close'].iloc[-2]
             change = price - prev_close
         
-        # 成交量（股數）
         volume = 0
         if 'Volume' in data.columns and not data['Volume'].empty:
-            volume = data['Volume'].iloc[-1]
+            volume = int(data['Volume'].iloc[-1])
         
-        # 成交值
         turnover = 0
         if 'Volume' in data.columns and not data['Volume'].empty:
             turnover = volume * price
         
-        print(f"✅ 大盤指數: {price:.2f}, 漲跌: {change:.2f}, 成交量: {volume}, 成交值: {turnover:.0f}")
+        print(f"✅ 大盤指數: {price:.2f}, 漲跌: {change:.2f}")
         
         return {
             'price': round(price, 2),
