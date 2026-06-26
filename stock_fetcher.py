@@ -6,10 +6,8 @@ import json
 import os
 import random
 
-# 備援數據檔案
 CACHE_FILE = 'stock_cache.json'
 
-# 預設備援價格
 DEFAULT_PRICES = {
     '0050': {'price': 108.0, 'company_name': '元大台灣50'},
     '2330': {'price': 580.0, 'company_name': '台積電'},
@@ -17,36 +15,30 @@ DEFAULT_PRICES = {
     '2317': {'price': 180.0, 'company_name': '鴻海'},
     '2454': {'price': 1200.0, 'company_name': '聯發科'},
     '2412': {'price': 120.0, 'company_name': '中華電'},
-    '2881': {'price': 45.0, 'company_name': '富邦金'},
-    '2891': {'price': 35.0, 'company_name': '中信金'},
 }
 
-
 def load_cache():
-    """載入快取的股價數據"""
-    if os.path.exists(CACHE_FILE):
-        try:
+    """安全載入快取"""
+    try:
+        if os.path.exists(CACHE_FILE):
             with open(CACHE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
-            pass
-    return {}
-
+        return {}
+    except:
+        return {}
 
 def save_cache(data):
-    """儲存股價數據到快取"""
+    """儲存快取"""
     try:
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except:
         pass
 
-
 def get_fallback_data(symbol):
-    """取得備援數據（從快取或預設值）"""
+    """備援數據"""
     cache = load_cache()
-
-    # 1. 優先使用快取
+    
     if symbol in cache:
         cached = cache[symbol]
         fluctuation = random.uniform(-1, 1)
@@ -58,8 +50,7 @@ def get_fallback_data(symbol):
             'company_name': cached.get('company_name', symbol),
             'from_cache': True
         }
-
-    # 2. 使用預設值
+    
     if symbol in DEFAULT_PRICES:
         default = DEFAULT_PRICES[symbol]
         fluctuation = random.uniform(-1, 1)
@@ -71,8 +62,7 @@ def get_fallback_data(symbol):
             'company_name': default['company_name'],
             'from_cache': True
         }
-
-    # 3. 完全隨機
+    
     return {
         'price': round(random.uniform(50, 500), 2),
         'change': round(random.uniform(-3, 3), 2),
@@ -81,30 +71,29 @@ def get_fallback_data(symbol):
         'from_cache': True
     }
 
-
 def get_stock_data(symbol):
-    """優先爬蟲，失敗時使用備援數據"""
+    """抓取股價（爬蟲優先，備援確保）"""
     try:
         print(f"🔍 嘗試爬蟲: {symbol}")
-
+        
         if symbol.isdigit():
             ticker = symbol + '.TW'
         else:
             ticker = symbol
-
+        
         data = yf.download(ticker, period='1d', progress=False, timeout=10)
-
+        
         if not data.empty:
             price = data['Close'].iloc[-1]
             volume = int(data['Volume'].iloc[-1]) if 'Volume' in data.columns else 0
-
+            
             prev_data = yf.download(ticker, period='2d', progress=False, timeout=10)
             if len(prev_data) > 1:
                 prev_price = prev_data['Close'].iloc[-2]
                 change = ((price - prev_price) / prev_price) * 100
             else:
                 change = 0.0
-
+            
             company_name = symbol
             try:
                 ticker_obj = yf.Ticker(ticker)
@@ -114,7 +103,7 @@ def get_stock_data(symbol):
                     company_name = name
             except:
                 pass
-
+            
             result = {
                 'price': round(price, 2),
                 'change': round(change, 2),
@@ -122,34 +111,31 @@ def get_stock_data(symbol):
                 'company_name': company_name,
                 'from_cache': False
             }
-
+            
             cache = load_cache()
             cache[symbol] = result
             save_cache(cache)
-
+            
             print(f"✅ 爬蟲成功: {symbol} = {price:.2f}")
             return result
-
-        print(f"⚠️ 爬蟲失敗，使用備援數據: {symbol}")
+        
+        print(f"⚠️ 爬蟲失敗，使用備援: {symbol}")
         return get_fallback_data(symbol)
-
+        
     except Exception as e:
-        print(f"❌ 爬蟲錯誤 ({symbol}): {e}")
-        print(f"🔄 使用備援數據: {symbol}")
+        print(f"❌ 爬蟲錯誤: {e}")
         return get_fallback_data(symbol)
-
 
 def get_stock_history(symbol, period='5d'):
-    """抓取歷史 K 線數據（爬蟲失敗時生成模擬數據）"""
+    """抓取歷史 K 線"""
     try:
         if symbol.isdigit():
             ticker = symbol + '.TW'
         else:
             ticker = symbol
-
-        print(f"🔍 抓取歷史資料: {ticker}")
+        
         data = yf.download(ticker, period=period, progress=False, timeout=15)
-
+        
         if not data.empty:
             return {
                 'dates': data.index.strftime('%Y-%m-%d').tolist(),
@@ -158,17 +144,13 @@ def get_stock_history(symbol, period='5d'):
                 'lows': data['Low'].round(2).tolist(),
                 'closes': data['Close'].round(2).tolist()
             }
-
-        print(f"⚠️ 歷史資料抓取失敗，生成模擬數據: {symbol}")
+        
         return generate_mock_history(symbol)
-
-    except Exception as e:
-        print(f"❌ 歷史資料錯誤: {e}")
+    except:
         return generate_mock_history(symbol)
-
 
 def generate_mock_history(symbol):
-    """生成模擬歷史 K 線"""
+    """模擬 K 線"""
     try:
         cache = load_cache()
         if symbol in cache:
@@ -177,40 +159,34 @@ def generate_mock_history(symbol):
             base_price = DEFAULT_PRICES[symbol]['price']
         else:
             base_price = 100.0
-
-        dates = []
-        opens = []
-        highs = []
-        lows = []
-        closes = []
-
+        
+        dates, opens, highs, lows, closes = [], [], [], [], []
         today = datetime.now()
         price = base_price
-
+        
         for i in range(10, -1, -1):
             date = today - timedelta(days=i)
             if date.weekday() >= 5:
                 continue
             if len(dates) >= 5:
                 break
-
+            
             change = random.uniform(-2, 2)
             open_price = price * (1 + random.uniform(-0.5, 0.5) / 100)
             close_price = open_price * (1 + change / 100)
             high_price = max(open_price, close_price) * (1 + random.uniform(0, 0.5) / 100)
             low_price = min(open_price, close_price) * (1 - random.uniform(0, 0.5) / 100)
-
+            
             dates.append(date.strftime('%Y-%m-%d'))
             opens.append(round(open_price, 2))
             highs.append(round(high_price, 2))
             lows.append(round(low_price, 2))
             closes.append(round(close_price, 2))
-
             price = close_price
-
+        
         if not dates:
             return None
-
+        
         return {
             'dates': dates[::-1],
             'opens': opens[::-1],
@@ -218,13 +194,11 @@ def generate_mock_history(symbol):
             'lows': lows[::-1],
             'closes': closes[::-1]
         }
-    except Exception as e:
-        print(f"❌ 生成模擬歷史數據失敗: {e}")
+    except:
         return None
 
-
 def get_news():
-    """從 Google News 抓取財經新聞標題"""
+    """抓取新聞"""
     try:
         url = 'https://news.google.com/rss/search?q=stock+market&hl=zh-TW&gl=TW&ceid=TW:zh'
         headers = {
@@ -241,8 +215,7 @@ def get_news():
                 'pub_date': item.pubDate.text[:16] if item.pubDate else ''
             })
         return news_items
-    except Exception as e:
-        print(f"❌ 抓取新聞錯誤: {e}")
+    except:
         return [
             {'title': '📊 台積電宣布3奈米製程量產', 'link': '#'},
             {'title': '📈 美股四大指數全面上漲', 'link': '#'},
